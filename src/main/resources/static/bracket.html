@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>John Power Memorial Darts Tournament - Bracket</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f9f9f9;
+        color: #333;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+      }
+
+      h1 {
+        text-align: center;
+        color: #2f4f2f;
+        margin: 20px 10px 10px;
+        font-size: 2rem;
+      }
+
+      .tournament-logo {
+        display: block;
+        margin: 0 auto 30px;
+        max-width: 180px;
+      }
+
+      #bracket {
+        display: flex;
+        overflow-x: auto;
+        padding: 10px 8px 40px;
+        gap: 16px;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .round {
+        flex: 0 0 auto;
+        min-width: 220px;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .round h4 {
+        text-align: center;
+        font-weight: 600;
+        color: #2f4f2f;
+        margin-bottom: 8px;
+      }
+
+      .match {
+        background: #ffffff;
+        border: 1px solid #cfcfcf;
+        border-radius: 8px;
+        padding: 12px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      }
+
+      /* New style for game number */
+      .game-number {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #666;
+        margin-bottom: 8px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      .player {
+        padding: 8px;
+        border-radius: 6px;
+        margin: 4px 0;
+        background-color: #e6f3ea;
+        color: #333;
+      }
+
+      .winner {
+        background-color: #4caf50;
+        color: white;
+        font-weight: 700;
+      }
+
+      .loser {
+        background-color: #f8d7da; /* light red */
+        color: #721c24;
+        font-weight: 600;
+      }
+
+      .vs {
+        text-align: center;
+        font-weight: bold;
+        color: #888;
+      }
+
+      .board-label, .marker-label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 4px;
+        font-style: italic;
+      }
+
+      @media (max-width: 600px) {
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .round {
+          min-width: 180px;
+        }
+
+        .match {
+          padding: 10px;
+        }
+
+        .player {
+          font-size: 0.95rem;
+        }
+      }
+
+      #bracket::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      #bracket::-webkit-scrollbar-thumb {
+        background-color: rgba(0,0,0,0.2);
+        border-radius: 4px;
+      }
+
+      #bracket::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .scroll-hint {
+        text-align: center;
+        font-size: 1rem;
+        color: #555;
+        margin-bottom: 16px;
+        font-weight: 600;
+        user-select: none;
+      }
+    </style>
+</head>
+<body>
+
+<h1>John Power Memorial Darts Tournament</h1>
+<img src="john.jpg" alt="Darts Tournament Logo" class="tournament-logo" />
+<div class="scroll-hint">
+    👉 Scroll right to view full bracket
+</div>
+<div id="bracket"></div>
+
+<script>
+  async function loadBracket() {
+    try {
+      const response = await fetch('/api/bracket');
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      console.error("Error loading bracket:", err);
+      return null;
+    }
+  }
+
+  function getPlayerName(player, matchMap) {
+    if (!player) return null;
+    if (typeof player === "string") return player;
+    if (player.name) return player.name;
+    if (player.sourceMatchId && matchMap.has(player.sourceMatchId)) {
+      const prevMatch = matchMap.get(player.sourceMatchId);
+      return prevMatch.winner || `Winner of Game ${player.sourceMatchId}`;
+    }
+    return `Winner of Game ${player.sourceMatchId}`;
+  }
+
+  function getRoundName(rIndex, totalRounds) {
+    const last = totalRounds - 1;
+    if (rIndex === last) return "Final";
+    if (rIndex === last - 1) return "Semi Final";
+    if (rIndex === last - 2) return "Quarter Final";
+    if (rIndex === last - 3) return "Last 16";
+    return `Round ${rIndex + 1}`;
+  }
+
+  async function render() {
+    const rounds = await loadBracket();
+    if (!rounds) {
+      document.getElementById("bracket").textContent = "No bracket data found.";
+      return;
+    }
+
+    const bracket = document.getElementById("bracket");
+    bracket.innerHTML = "";
+
+    const matchMap = new Map();
+    rounds.flat().forEach(match => matchMap.set(match.id, match));
+
+    rounds.forEach((round, rIndex) => {
+      const roundDiv = document.createElement("div");
+      roundDiv.className = "round";
+
+      const roundTitle = document.createElement("h4");
+      roundTitle.textContent = getRoundName(rIndex, rounds.length);
+      roundDiv.appendChild(roundTitle);
+
+      round.forEach(match => {
+        const matchDiv = document.createElement("div");
+        matchDiv.className = "match";
+
+        // Add game number above players
+        const gameNumDiv = document.createElement("div");
+        gameNumDiv.className = "game-number";
+        gameNumDiv.textContent = `Game ${match.id}`;
+        matchDiv.appendChild(gameNumDiv);
+
+        const playersDiv = document.createElement("div");
+
+        const p1Name = getPlayerName(match.player1, matchMap);
+        const p2Name = getPlayerName(match.player2, matchMap);
+
+        if (p1Name) {
+          const p1Div = document.createElement("div");
+          p1Div.className = "player";
+          if (match.winner === p1Name) {
+            p1Div.classList.add("winner");
+          } else if (match.winner && match.winner !== p1Name) {
+            p1Div.classList.add("loser");
+          }
+          p1Div.textContent = p1Name;
+          playersDiv.appendChild(p1Div);
+        }
+
+        if (p2Name) {
+          const vsDiv = document.createElement("div");
+          vsDiv.className = "vs";
+          vsDiv.textContent = "v";
+          playersDiv.appendChild(vsDiv);
+
+          const p2Div = document.createElement("div");
+          p2Div.className = "player";
+          if (match.winner === p2Name) {
+            p2Div.classList.add("winner");
+          } else if (match.winner && match.winner !== p2Name) {
+            p2Div.classList.add("loser");
+          }
+          p2Div.textContent = p2Name;
+          playersDiv.appendChild(p2Div);
+        }
+
+        matchDiv.appendChild(playersDiv);
+
+        if (match.board) {
+          const boardDiv = document.createElement("div");
+          boardDiv.className = "board-label";
+          boardDiv.textContent = `Board: ${match.board}`;
+          matchDiv.appendChild(boardDiv);
+        }
+
+        if (match.marker) {
+          const markerDiv = document.createElement("div");
+          markerDiv.className = "marker-label";
+          markerDiv.textContent = `Marker: ${match.marker}`;
+          matchDiv.appendChild(markerDiv);
+        }
+
+        roundDiv.appendChild(matchDiv);
+      });
+
+      bracket.appendChild(roundDiv);
+    });
+  }
+
+  window.onload = render;
+</script>
+
+</body>
+</html>

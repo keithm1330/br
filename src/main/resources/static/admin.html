@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Darts Bracket Admin</title>
+    <style>
+      body { font-family: sans-serif; margin: 20px; }
+      textarea { width: 100%; height: 100px; font-size: 14px; margin-bottom: 10px; }
+      button { padding: 6px 12px; margin: 5px; }
+      .round { display: inline-block; vertical-align: top; margin-right: 20px; min-width: 220px; }
+      .match { border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin-bottom: 12px; background: #f9f9f9; }
+      .player { padding: 4px; cursor: pointer; border-radius: 4px; margin-bottom: 4px; user-select: none; }
+      .player:hover { background: #e0e0e0; }
+      .winner { background: #4CAF50; color: white; font-weight: bold; }
+      .board-input { width: 60px; margin-top: 6px; }
+      input[type="text"] { width: 100%; box-sizing: border-box; padding: 4px; margin: 4px 0; }
+      .marker-input { margin-top: 6px; box-sizing: border-box; padding: 4px; width: 100%; }
+
+      /* Toast styles */
+      #toast {
+        visibility: hidden;
+        min-width: 250px;
+        margin-left: -125px;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 4px;
+        padding: 12px;
+        position: fixed;
+        z-index: 1000;
+        left: 50%;
+        bottom: 30px;
+        font-size: 16px;
+        opacity: 0;
+        transition: opacity 0.5s ease-in-out;
+      }
+      #toast.show {
+        visibility: visible;
+        opacity: 1;
+      }
+    </style>
+</head>
+<body>
+
+<h2>Darts Tournament Admin</h2>
+<a href="bracket.html" target="_blank">🔗 View Public Bracket</a><br /><br />
+
+<textarea id="players" placeholder="Enter one player per line..."></textarea><br />
+<button id="generate">Generate Bracket</button>
+<button id="reset">Clear All</button>
+<button id="export">Export as PDF</button>
+<button id="export-json">Save to Server (Overwrite bracket.json)</button>
+
+<div id="bracket"></div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+  // Toast notification function
+  function showToast(message, isError = false) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.style.backgroundColor = isError ? '#e74c3c' : '#27ae60';
+    toast.className = 'show';
+    setTimeout(() => {
+      toast.className = toast.className.replace('show', '');
+    }, 3000);
+  }
+
+  // Debounced save to server to prevent flooding requests and popups
+  let saveTimeout = null;
+  async function postBracketToServer(bracketData) {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+      try {
+        const response = await fetch('/api/admin/bracket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bracketData),
+        });
+        if (!response.ok) throw new Error(`Server responded with status ${response.status}`);
+        showToast('Bracket saved to server successfully!');
+      } catch (err) {
+        showToast('Error saving bracket: ' + err.message, true);
+      }
+    }, 400);  // Adjust debounce time as needed
+  }
+
+  function getPlayerName(player) {
+    if (!player) return "";
+    return typeof player === "object" ? player.name : player;
+  }
+
+  function saveBracketLocal(data) {
+    localStorage.setItem("bracket", JSON.stringify(data));
+  }
+
+  function loadBracketLocal() {
+    const data = localStorage.getItem("bracket");
+    return data ? JSON.parse(data) : null;
+  }
+
+  function createBracket(players) {
+    let totalPlayers = players.length;
+    let nextPowerOf2 = 1;
+    while (nextPowerOf2 < totalPlayers) nextPowerOf2 *= 2;
+    let numByes = nextPowerOf2 - totalPlayers;
+
+    players = players.sort(() => Math.random() - 0.5);
+
+    const rounds = [];
+    let matchId = 1;
+
+    const round1 = [];
+    let playerIdx = 0;
+    while (playerIdx < totalPlayers) {
+      const p1 = players[playerIdx++];
+      let p2 = null;
+
+      if (numByes > 0) {
+        p2 = null;
+        numByes--;
+      } else if (playerIdx < totalPlayers) {
+        p2 = players[playerIdx++];
+      }
+
+      round1.push({id: matchId++, player1: p1, player2: p2, winner: null, board: null, marker: null});
+    }
+    rounds.push(round1);
+
+    let currentRound = round1;
+    while (currentRound.length > 1) {
+      const nextRound = [];
+      for (let i = 0; i < currentRound.length; i += 2) {
+        const m1 = currentRound[i];
+        const m2 = currentRound[i + 1];
+        nextRound.push({
+                         id: matchId++,
+                         player1: {name: "", sourceMatchId: m1.id},
+                         player2: m2 ? {name: "", sourceMatchId: m2.id} : null,
+                         winner: null,
+                         board: null,
+                         marker: null
+                       });
+      }
+      rounds.push(nextRound);
+      currentRound = nextRound;
+    }
+    return rounds;
+  }
+
+  function autoAdvanceByes(rounds) {
+    const firstRound = rounds[0];
+    for (const match of firstRound) {
+      const p1 = getPlayerName(match.player1);
+      const p2 = getPlayerName(match.player2);
+      if (p1 && !p2 && !match.winner) {
+        match.winner = p1;
+        propagateWinner(rounds, match, p1);
+      }
+    }
+  }
+
+  function propagateWinner(rounds, match, winnerName) {
+    for (let r = 1; r < rounds.length; r++) {
+      for (const m of rounds[r]) {
+        ["player1", "player2"].forEach(key => {
+          const player = m[key];
+          if (player && typeof player === "object" && player.sourceMatchId === match.id) {
+            player.name = winnerName || "";
+            if (m.winner !== getPlayerName(m.player1) && m.winner !== getPlayerName(m.player2)) {
+              m.winner = null;
+            }
+          }
+        });
+      }
+    }
+    saveBracketLocal(rounds);
+    // DO NOT auto-save here to avoid multiple save popups
+  }
+
+  function setWinner(rounds, match, name) {
+    if (match.winner === name) {
+      match.winner = null;
+      propagateWinner(rounds, match, null);
+    } else {
+      match.winner = name;
+      propagateWinner(rounds, match, name);
+    }
+    saveBracketLocal(rounds);
+    render(rounds);
+    postBracketToServer(rounds);  // Save and notify only on explicit user action
+  }
+
+  function updateName(rounds, oldName, newName) {
+    for (const round of rounds) {
+      for (const match of round) {
+        ["player1", "player2"].forEach(p => {
+          if (getPlayerName(match[p]) === oldName) {
+            if (typeof match[p] === "object") match[p].name = newName;
+            else match[p] = newName;
+          }
+        });
+        if (match.winner === oldName) match.winner = newName;
+      }
+    }
+    saveBracketLocal(rounds);
+    render(rounds);
+    postBracketToServer(rounds);  // Save and notify only on explicit user action
+  }
+
+  function render(rounds) {
+    autoAdvanceByes(rounds);
+    const bracket = document.getElementById("bracket");
+    bracket.innerHTML = "";
+
+    rounds.forEach((round, r) => {
+      const div = document.createElement("div");
+      div.className = "round";
+
+      const roundNames = ["Final", "Semi Final", "Quarter Final"];
+      const fromEnd = rounds.length - r - 1;
+      if (fromEnd < 3) {
+        div.appendChild(Object.assign(document.createElement("h4"), { textContent: roundNames[fromEnd] }));
+      } else {
+        div.appendChild(Object.assign(document.createElement("h4"), { textContent: `Round ${r + 1}` }));
+      }
+
+      round.forEach(match => {
+        const p1 = getPlayerName(match.player1);
+        const p2 = getPlayerName(match.player2);
+        if (!p1 && !p2) return;
+
+        const m = document.createElement("div");
+        m.className = "match";
+
+        const g = document.createElement("div");
+        g.textContent = `Game ${match.id}`;
+        g.style.fontWeight = "bold";
+        m.appendChild(g);
+
+        ["player1", "player2"].forEach(p => {
+          const player = match[p];
+          const name = getPlayerName(player);
+          if (!name) return;
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "player";
+          wrapper.textContent = name;
+          if (match.winner === name) wrapper.classList.add("winner");
+
+          wrapper.onclick = () => setWinner(rounds, match, name);
+
+          wrapper.ondblclick = () => {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = name;
+            input.onblur = () => {
+              const newVal = input.value.trim() || name;
+              updateName(rounds, name, newVal);
+            };
+            input.onkeydown = (e) => {
+              if (e.key === "Enter") input.blur();
+            };
+            m.replaceChild(input, wrapper);
+            input.focus();
+          };
+
+          m.appendChild(wrapper);
+        });
+
+        const b = document.createElement("input");
+        b.type = "text";
+        b.placeholder = "Board";
+        b.className = "board-input";
+        b.value = match.board || "";
+        b.onchange = () => {
+          match.board = b.value.trim();
+          saveBracketLocal(rounds);
+          postBracketToServer(rounds);
+        };
+        m.appendChild(b);
+
+        const marker = document.createElement("input");
+        marker.type = "text";
+        marker.placeholder = "Marker";
+        marker.className = "marker-input";
+        marker.value = match.marker || "";
+        marker.onchange = () => {
+          match.marker = marker.value.trim();
+          saveBracketLocal(rounds);
+          postBracketToServer(rounds);
+        };
+        m.appendChild(marker);
+
+        div.appendChild(m);
+      });
+      bracket.appendChild(div);
+    });
+  }
+
+  document.getElementById("generate").onclick = () => {
+    const players = document.getElementById("players").value.trim().split("\n").map(s => s.trim()).filter(Boolean);
+    if (players.length < 2) {
+      alert("Enter at least two players.");
+      return;
+    }
+    const rounds = createBracket(players);
+    saveBracketLocal(rounds);
+    render(rounds);
+    // No save here to avoid popups on initial generate
+  };
+
+  document.getElementById("reset").onclick = () => {
+    localStorage.removeItem("bracket");
+    document.getElementById("players").value = "";
+    document.getElementById("bracket").innerHTML = "";
+  };
+
+  document.getElementById("export").onclick = () => {
+    const bracket = document.getElementById("bracket");
+    html2canvas(bracket).then(canvas => {
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save('bracket.pdf');
+    });
+  };
+
+  document.getElementById("export-json").onclick = () => {
+    const rounds = loadBracketLocal();
+    if (!rounds) {
+      alert("No bracket data to save.");
+      return;
+    }
+    postBracketToServer(rounds);
+  };
+
+  // On page load, load bracket from localStorage and render
+  window.onload = () => {
+    const rounds = loadBracketLocal();
+    if (rounds) {
+      render(rounds);
+      // No auto-save here to avoid save popups on load
+    }
+  };
+</script>
+
+</body>
+</html>
