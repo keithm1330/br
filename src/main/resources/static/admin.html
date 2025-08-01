@@ -423,8 +423,13 @@
       setButtonsDisabled(false);
     }
 
+     if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === "e") {
+      e.preventDefault();
+      setButtonsDisabled(true);
+    }
+
     // Ctrl+Shift+E or Cmd+Shift+E to export-json click
-    if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === "e") {
+    if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === "u") {
       e.preventDefault();
       document.getElementById("export-json").click();
     }
