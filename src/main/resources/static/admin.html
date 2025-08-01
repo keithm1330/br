@@ -5,43 +5,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Darts Bracket Admin</title>
     <style>
-      body { font-family: sans-serif; margin: 20px; }
-      textarea { width: 100%; height: 100px; font-size: 14px; margin-bottom: 10px; }
-      button { padding: 6px 12px; margin: 5px; }
-      .round { display: inline-block; vertical-align: top; margin-right: 20px; min-width: 220px; }
-      .match { border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin-bottom: 12px; background: #f9f9f9; }
-      .player { padding: 4px; cursor: pointer; border-radius: 4px; margin-bottom: 4px; user-select: none; }
-      .player:hover { background: #e0e0e0; }
-      .winner { background: #4CAF50; color: white; font-weight: bold; }
-      .board-input { width: 60px; margin-top: 6px; }
-      input[type="text"] { width: 100%; box-sizing: border-box; padding: 4px; margin: 4px 0; }
-      .marker-input { margin-top: 6px; box-sizing: border-box; padding: 4px; width: 100%; }
+    body { font-family: sans-serif; margin: 20px; }
+    textarea { width: 100%; height: 100px; font-size: 14px; margin-bottom: 10px; }
+    button { padding: 6px 12px; margin: 5px; }
+    .round { display: inline-block; vertical-align: top; margin-right: 20px; min-width: 220px; }
+    .match { border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin-bottom: 12px; background: #f9f9f9; }
+    .player { padding: 4px; cursor: pointer; border-radius: 4px; margin-bottom: 4px; user-select: none; }
+    .player:hover { background: #e0e0e0; }
+    .winner { background: #4CAF50; color: white; font-weight: bold; }
+    .board-input { width: 60px; margin-top: 6px; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 4px; margin: 4px 0; }
+    .marker-input { margin-top: 6px; box-sizing: border-box; padding: 4px; width: 100%; }
 
-      /* Toast styles */
-      #toast {
-        visibility: hidden;
-        min-width: 250px;
-        margin-left: -125px;
-        background-color: #333;
-        color: #fff;
-        text-align: center;
-        border-radius: 4px;
-        padding: 12px;
-        position: fixed;
-        z-index: 1000;
-        left: 50%;
-        bottom: 30px;
-        font-size: 16px;
-        opacity: 0;
-        transition: opacity 0.5s ease-in-out;
-      }
-      #toast.show {
-        visibility: visible;
-        opacity: 1;
-      }
-    </style>
+    #toast {
+      visibility: hidden;
+      min-width: 250px;
+      margin-left: -125px;
+      background-color: #333;
+      color: #fff;
+      text-align: center;
+      border-radius: 4px;
+      padding: 12px;
+      position: fixed;
+      z-index: 1000;
+      left: 50%;
+      bottom: 30px;
+      font-size: 16px;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+    #toast.show {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
 </head>
 <body>
+<script>
+  const password = prompt("Enter password to access this page:");
+  if (password !== "jp180180") {
+    alert("Incorrect password. Redirecting...");
+    window.location.href = "https://www.google.com"; // or any redirect
+  }
+</script>
 
 <h2>Darts Tournament Admin</h2>
 <a href="bracket.html" target="_blank">🔗 View Public Bracket</a><br /><br />
@@ -51,6 +57,7 @@
 <button id="reset">Clear All</button>
 <button id="export">Export as PDF</button>
 <button id="export-json">Save to Server (Overwrite bracket.json)</button>
+<button id="enable-editing" style="display:none;">Enable Editing</button>
 
 <div id="bracket"></div>
 
@@ -59,7 +66,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-  // Toast notification function
   function showToast(message, isError = false) {
     const toast = document.getElementById('toast');
     toast.textContent = message;
@@ -70,7 +76,6 @@
     }, 3000);
   }
 
-  // Debounced save to server to prevent flooding requests and popups
   let saveTimeout = null;
   async function postBracketToServer(bracketData) {
     if (saveTimeout) clearTimeout(saveTimeout);
@@ -86,7 +91,7 @@
       } catch (err) {
         showToast('Error saving bracket: ' + err.message, true);
       }
-    }, 400);  // Adjust debounce time as needed
+    }, 400);
   }
 
   function getPlayerName(player) {
@@ -138,13 +143,13 @@
         const m1 = currentRound[i];
         const m2 = currentRound[i + 1];
         nextRound.push({
-                         id: matchId++,
-                         player1: {name: "", sourceMatchId: m1.id},
-                         player2: m2 ? {name: "", sourceMatchId: m2.id} : null,
-                         winner: null,
-                         board: null,
-                         marker: null
-                       });
+          id: matchId++,
+          player1: {name: "", sourceMatchId: m1.id},
+          player2: m2 ? {name: "", sourceMatchId: m2.id} : null,
+          winner: null,
+          board: null,
+          marker: null
+        });
       }
       rounds.push(nextRound);
       currentRound = nextRound;
@@ -171,6 +176,7 @@
           const player = m[key];
           if (player && typeof player === "object" && player.sourceMatchId === match.id) {
             player.name = winnerName || "";
+            // If current winner does not match player1 or player2 name, clear winner
             if (m.winner !== getPlayerName(m.player1) && m.winner !== getPlayerName(m.player2)) {
               m.winner = null;
             }
@@ -179,7 +185,23 @@
       }
     }
     saveBracketLocal(rounds);
-    // DO NOT auto-save here to avoid multiple save popups
+  }
+
+  function clearDownstream(rounds, matchId) {
+    for (let r = 1; r < rounds.length; r++) {
+      for (const m of rounds[r]) {
+        ["player1", "player2"].forEach(key => {
+          const player = m[key];
+          if (player && typeof player === "object" && player.sourceMatchId === matchId) {
+            player.name = "";
+            if (m.winner === getPlayerName(player)) {
+              m.winner = null;
+              clearDownstream(rounds, m.id);
+            }
+          }
+        });
+      }
+    }
   }
 
   function setWinner(rounds, match, name) {
@@ -192,7 +214,7 @@
     }
     saveBracketLocal(rounds);
     render(rounds);
-    postBracketToServer(rounds);  // Save and notify only on explicit user action
+    postBracketToServer(rounds);
   }
 
   function updateName(rounds, oldName, newName) {
@@ -209,7 +231,7 @@
     }
     saveBracketLocal(rounds);
     render(rounds);
-    postBracketToServer(rounds);  // Save and notify only on explicit user action
+    postBracketToServer(rounds);
   }
 
   function render(rounds) {
@@ -223,11 +245,9 @@
 
       const roundNames = ["Final", "Semi Final", "Quarter Final"];
       const fromEnd = rounds.length - r - 1;
-      if (fromEnd < 3) {
-        div.appendChild(Object.assign(document.createElement("h4"), { textContent: roundNames[fromEnd] }));
-      } else {
-        div.appendChild(Object.assign(document.createElement("h4"), { textContent: `Round ${r + 1}` }));
-      }
+      div.appendChild(Object.assign(document.createElement("h4"), {
+        textContent: fromEnd < 3 ? roundNames[fromEnd] : `Round ${r + 1}`
+      }));
 
       round.forEach(match => {
         const p1 = getPlayerName(match.player1);
@@ -245,31 +265,66 @@
         ["player1", "player2"].forEach(p => {
           const player = match[p];
           const name = getPlayerName(player);
-          if (!name) return;
 
-          const wrapper = document.createElement("div");
-          wrapper.className = "player";
-          wrapper.textContent = name;
-          if (match.winner === name) wrapper.classList.add("winner");
-
-          wrapper.onclick = () => setWinner(rounds, match, name);
-
-          wrapper.ondblclick = () => {
-            const input = document.createElement("input");
-            input.type = "text";
-            input.value = name;
-            input.onblur = () => {
-              const newVal = input.value.trim() || name;
-              updateName(rounds, name, newVal);
+          if (!name) {
+            // Show Add Player button if slot empty
+            const addBtn = document.createElement("button");
+            addBtn.textContent = "+ Add Player";
+            addBtn.style.fontSize = "12px";
+            addBtn.onclick = () => {
+              const input = document.createElement("input");
+              input.type = "text";
+              input.placeholder = "Enter player name";
+              input.onkeydown = (e) => {
+                if (e.key === "Enter") {
+                  const val = input.value.trim();
+                  if (val) {
+                    if (typeof match[p] === "object" && match[p] !== null) {
+                      match[p].name = val;
+                    } else {
+                      match[p] = val;
+                    }
+                    if (match.winner) {
+                      match.winner = null;
+                      clearDownstream(rounds, match.id);
+                    }
+                    saveBracketLocal(rounds);
+                    postBracketToServer(rounds);
+                    render(rounds);
+                  }
+                } else if (e.key === "Escape") {
+                  render(rounds);
+                }
+              };
+              m.replaceChild(input, addBtn);
+              input.focus();
             };
-            input.onkeydown = (e) => {
-              if (e.key === "Enter") input.blur();
-            };
-            m.replaceChild(input, wrapper);
-            input.focus();
-          };
+            m.appendChild(addBtn);
+          } else {
+            const wrapper = document.createElement("div");
+            wrapper.className = "player";
+            wrapper.textContent = name;
+            if (match.winner === name) wrapper.classList.add("winner");
 
-          m.appendChild(wrapper);
+            wrapper.onclick = () => setWinner(rounds, match, name);
+
+            wrapper.ondblclick = () => {
+              const input = document.createElement("input");
+              input.type = "text";
+              input.value = name;
+              input.onblur = () => {
+                const newVal = input.value.trim() || name;
+                updateName(rounds, name, newVal);
+              };
+              input.onkeydown = (e) => {
+                if (e.key === "Enter") input.blur();
+              };
+              m.replaceChild(input, wrapper);
+              input.focus();
+            };
+
+            m.appendChild(wrapper);
+          }
         });
 
         const b = document.createElement("input");
@@ -302,53 +357,91 @@
     });
   }
 
-  document.getElementById("generate").onclick = () => {
-    const players = document.getElementById("players").value.trim().split("\n").map(s => s.trim()).filter(Boolean);
-    if (players.length < 2) {
-      alert("Enter at least two players.");
-      return;
-    }
-    const rounds = createBracket(players);
-    saveBracketLocal(rounds);
-    render(rounds);
-    // No save here to avoid popups on initial generate
-  };
-
-  document.getElementById("reset").onclick = () => {
-    localStorage.removeItem("bracket");
-    document.getElementById("players").value = "";
-    document.getElementById("bracket").innerHTML = "";
-  };
-
-  document.getElementById("export").onclick = () => {
+  function exportToPdf() {
     const bracket = document.getElementById("bracket");
     html2canvas(bracket).then(canvas => {
       const imgData = canvas.toDataURL('image/png');
       const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF();
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdf = new jsPDF({ orientation: "landscape" });
+      const width = pdf.internal.pageSize.getWidth();
+      const height = pdf.internal.pageSize.getHeight();
+      pdf.addImage(imgData, 'PNG', 5, 5, width - 10, height - 10);
       pdf.save('bracket.pdf');
     });
+  }
+
+  function setButtonsDisabled(disabled) {
+    document.getElementById("generate").disabled = disabled;
+    document.getElementById("reset").disabled = disabled;
+    if (disabled) {
+      showToast("Generate & Clear buttons disabled.");
+    } else {
+      showToast("Generate & Clear buttons re-enabled.");
+    }
+  }
+
+  document.getElementById("generate").onclick = () => {
+    const players = document.getElementById("players").value.trim().split("\n").map(s => s.trim()).filter(Boolean);
+    if (players.length < 2) {
+      alert("Please enter at least two players.");
+      return;
+    }
+    const bracket = createBracket(players);
+    saveBracketLocal(bracket);
+    render(bracket);
+    postBracketToServer(bracket);
+    setButtonsDisabled(true); // disable buttons on generate
   };
 
+  document.getElementById("reset").onclick = () => {
+    if (confirm("Clear bracket and local storage?")) {
+      localStorage.removeItem("bracket");
+      document.getElementById("players").value = "";
+      document.getElementById("bracket").innerHTML = "";
+      setButtonsDisabled(false); // re-enable buttons after clear
+    }
+  };
+
+  document.getElementById("export").onclick = () => exportToPdf();
+
   document.getElementById("export-json").onclick = () => {
-    const rounds = loadBracketLocal();
-    if (!rounds) {
+    const bracket = loadBracketLocal();
+    if (!bracket) {
       alert("No bracket data to save.");
       return;
     }
-    postBracketToServer(rounds);
+    postBracketToServer(bracket);
   };
 
-  // On page load, load bracket from localStorage and render
+  // Keyboard shortcut to re-enable buttons: Ctrl+Shift+R (Cmd+Shift+R on Mac)
+  document.addEventListener("keydown", function(e) {
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+    const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
+    if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      setButtonsDisabled(false);
+    }
+
+    // Ctrl+Shift+E or Cmd+Shift+E to export-json click
+    if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === "e") {
+      e.preventDefault();
+      document.getElementById("export-json").click();
+    }
+  });
+
+  // On page load, try to load bracket from local storage
   window.onload = () => {
-    const rounds = loadBracketLocal();
-    if (rounds) {
-      render(rounds);
-      // No auto-save here to avoid save popups on load
+    const savedBracket = loadBracketLocal();
+    if (savedBracket) {
+      render(savedBracket);
+      setButtonsDisabled(true);
+      const players = [];
+      savedBracket[0].forEach(m => {
+        if (m.player1) players.push(getPlayerName(m.player1));
+        if (m.player2) players.push(getPlayerName(m.player2));
+      });
+      document.getElementById("players").value = players.filter(Boolean).join("\n");
     }
   };
 </script>
